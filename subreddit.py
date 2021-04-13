@@ -23,6 +23,7 @@ creates data structure for each post from a text file to this format
 
 import re
 
+
 class Subreddit:
     '''
     Subreddit class
