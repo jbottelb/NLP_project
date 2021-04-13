@@ -90,9 +90,9 @@ class Comment:
         Use the Godly power of regex
         """
         self.karma = re.compile(r'=&=-?\d+=&=').findall(line)[0].replace('=&=','')
+        self.text  = re.compile(r'<COMMENT>.*<\\COMMENT').findall(line)[0] \
+            .replace('<COMMENT>','').replace('<\\COMMENT','')
 
-        text       = re.sub("<COMMMENT>", "", line)
-        self.text  = re.sub("<COMMMENT>", "", text)
 
 
 class Title:
