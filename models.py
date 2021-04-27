@@ -5,34 +5,93 @@ import sys
 import sklearn
 from sklearn import svm
 from sklearn import linear_model
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.utils import shuffle
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, mean_squared_error, mean_absolute_error, r2_score
 
-def model_diagnostics(model, pr=True):
-    """
-    Returns and prints the R-squared, RMSE and the MAE for a trained model
-    """
-    y_predicted = model.predict(X_test)
-    r2 = r2_score(y_test, y_predicted)
-    mse = mean_squared_error(y_test, y_predicted)
-    mae = mean_absolute_error(y_test, y_predicted)
-    if pr:
-        print(f"R-Sq: {r2:.4}")
-        print(f"RMSE: {np.sqrt(mse)}")
-        print(f"MAE: {mae}")
-
-    return [r2,np.sqrt(mse),mae]
-
-class ML_Models:
+class Models:
     def __init__(self, train, test):
         self.train_data = self.create_df(train)
         self.test_data  = self.create_df(test)
+        self.train_prediction = None
+        self.test_predicition = None
+
+    def combined_model(self):
+        '''
+        This takes the Forrest Classifier, and makes it learn with the svm values
+        '''
+
+        if not self.train_prediction.any() or not self.test_predicition.any():
+            print("Run an svm regrerssor model first!")
+            return
+
+        print("Running Combined Model")
+
+        self.train_data['Predicted'] = self.train_prediction
+        self.test_data['Predicted'] = self.test_predicition
+
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
+
+        rf = RandomForestRegressor(n_jobs=-1, n_estimators=70, min_samples_leaf=10, random_state = 10)
+        rf.fit(x_train, y_train)
+
+        y_pred = rf.predict(x_test)
+
+        self.model_diagnostics(y_test, y_pred)
+
+        return rf
+
+    def LR_classifier(self):
+        '''
+        This takes attributes that are not words and learns the upvotes
+
+        The goal is to improve this with the text
+        '''
 
 
+        x_train = self.train_data[['Parent_Score', 'Time']]
+        x_test = self.test_data[['Parent_Score', 'Time']]
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
 
-    def svm(self):
+        linear = LinearRegression()
+
+        LR = linear.fit(x_train, y_train)
+        y_pred = LR.predict(x_test)
+
+        print(y_pred)
+
+        self.model_diagnostics(y_test, y_pred)
+
+    def RandomForesetClassifier(self):
+        '''
+        This takes attributes that are not words and learns the upvotes
+
+        The goal is to improve this with the text
+        '''
+
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved']]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved']]
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
+
+        rf = RandomForestRegressor(n_jobs=-1, n_estimators=70, min_samples_leaf=10, random_state = 10)
+        rf.fit(x_train, y_train)
+
+        y_pred = rf.predict(x_test)
+        self.model_diagnostics(y_test, y_pred)
+        return rf
+
+    def svm_classifier(self):
+        '''
+        Classifier, not very good. Basically comes up with 1 every time.
+        '''
         x_train = self.train_data['Comment']
         x_test = self.test_data['Comment']
         y_train = self.train_data['Score']
@@ -53,22 +112,50 @@ class ML_Models:
         y_pred_svm = s.predict(x_test_vec)
         print("Accuracy score for SVC is: ", accuracy_score(y_test, y_pred_svm) * 100, '%')
 
+    def svm_regressor(self):
+        x_train = self.train_data['Comment']
+        x_test = self.test_data['Comment']
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
 
-    def linear(self):
-        X_train = self.train_data[['Parent_Score', "Comment"]]
-        Y_train = self.train_data[['Parent_Score', "Comment"]]
-        X_test = self.train_data[['Score']]
-        Y_test = self.train_data[['Score']]
+        vectorizer = CountVectorizer(min_df=1, stop_words='english')
+        vectorizer.fit(list(x_train) + list(x_test))
 
-        print(X_train)
+        x_train_vec = vectorizer.transform(x_train)
+        x_test_vec = vectorizer.transform(x_test)
 
-        linear = linear_model.LinearRegression()
-        linear.fit(X_train, Y_train)
+        regr = svm.SVR()
+
+        # fit the SVC model based on the given training data
+        regr.fit(x_train_vec, y_train)
+
+        # perform classification and prediction on samples in x_test
+        y_pred_svm = regr.predict(x_test_vec)
+
+        self.model_diagnostics(y_test, y_pred_svm)
+
+        y_pred_train_svm = regr.predict(x_train_vec)
+        self.train_prediction = y_pred_train_svm # this is a cheated matrix but fdp
+        self.test_predicition = y_pred_svm
+
+    def baseline_mode(self):
+        '''
+        this baseline uses mode
+        '''
+        pass
+
+    def baseline_avg(self):
+        '''
+        this baseline uses average
+        '''
+        pass
 
     def create_df(self, file):
-        test_sentences = []
-        test_scores    = []
-        test_parent_scores = []
+        sentences = []
+        scores    = []
+        parent_scores = []
+        times = []
+        saved = []
 
         running = ''
         with open(file) as tf:
@@ -78,28 +165,48 @@ class ML_Models:
                     continue
                 line = running + line
 
-                line = line.strip().split("<SPLIT>")
+                line, score = line.strip().split("<SPLIT>")
 
-                test_parent_scores.append(int(line[0].split(" ")[0]))
-                comment = " ".join(line[0].split(" ")[1:])
+                values, line = line.strip().split("<COMMENT>")
 
-                test_sentences.append(comment)
-                test_scores.append(int(line[1]))
+                parent_score, time, sv = values.strip().split(" ")
+
+                sentences.append(line)
+                scores.append(int(score))
+                parent_scores.append(int(parent_score))
+                times.append(float(time))
+                saved.append(int(sv))
+
                 running = ''
 
         data = { \
-            'Parent_Score' : test_parent_scores, \
-            'Comment' : test_sentences,          \
-            'Score' : test_scores
+            'Parent_Score' : parent_scores, \
+            'Time'      : times,             \
+            'Comment' : sentences,          \
+            'Saved'   : saved, \
+            'Score' : scores
         }
         data = pd.DataFrame(data, columns = ['Parent_Score', \
-                                        'Comment', 'Score'])
+                                        'Comment', 'Time', 'Saved', 'Score'])
 
         return data
 
+    def model_diagnostics(self, y_test, y_predicted):
+        """
+        Returns and prints the R-squared, RMSE and the MAE for a trained model
+        """
+
+        r2 = r2_score(y_test, y_predicted)
+        mse = mean_squared_error(y_test, y_predicted)
+        mae = mean_absolute_error(y_test, y_predicted)
+
+        print(f"R-Sq: {r2:.4}")
+        print(f"RMSE: {np.sqrt(mse)}")
+        print(f"MAE: {mae}")
+
 if __name__ == "__main__":
-    _, train, dev, test = sys.argv
+    _, train, test = sys.argv
 
-
-    model = ML_Models(train, test)
-    model.svm()
+    model = Models(train, test)
+    model.svm_regressor()
+    cbm = model.combined_model()
