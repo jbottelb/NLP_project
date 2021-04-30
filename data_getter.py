@@ -24,7 +24,7 @@ reddit = praw.Reddit(username='data_getting',     \
 
 subreddit = reddit.subreddit('memes')
 
-top_subreddit  = subreddit.top(limit=3)
+top_subreddit  = subreddit.hot(limit=3)
 
 output = ''
 

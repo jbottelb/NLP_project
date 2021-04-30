@@ -1,16 +1,33 @@
 import pandas as pd
 import numpy as np
 import sys
+from scipy import stats
+import math
 
-import sklearn
 from sklearn import svm
-from sklearn import linear_model
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.utils import shuffle
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, mean_squared_error, mean_absolute_error, r2_score
+
+from catboost import Pool, cv, CatBoostRegressor,CatBoostClassifier
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from part1 import Vocab
+
+# Translate to log values
+LOG = False
+
+if torch.cuda.is_available():
+    dev = "cuda:0"
+else:
+    dev = "cpu"
 
 class Models:
     def __init__(self, train, test):
@@ -19,7 +36,96 @@ class Models:
         self.train_prediction = None
         self.test_predicition = None
 
-    def combined_model(self):
+    def neural(self):
+        '''
+        an attempt to get a neural network going
+
+        This never ended up working.
+        My best attempts rewarded almost always gussing 1 and 2
+
+        I tried a number of loss functions as well
+        '''
+        x_train = self.train_data['Comment']
+        x_test = self.test_data['Comment']
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
+
+        max = 0
+        vocab = Vocab()
+        for sentence in x_train:
+            if len(sentence.strip().split(" ")) > max:
+                max = len(sentence.strip().split(" "))
+            for word in sentence.strip().split(" "):
+                vocab.add(word)
+
+        class Net(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = nn.Linear(max, 64)
+                self.fc2 = nn.Linear(64, 64)
+                self.fc3 = nn.Linear(64, 64)
+                self.fc4 = nn.Linear(64, 1)
+
+            def forward(self, x):
+                x = F.relu(self.fc1(x))
+                x = F.relu(self.fc2(x))
+                x = F.relu(self.fc3(x))
+                x = self.fc4(x)
+                return x # * 1000
+
+        net = Net()
+        optimizer = optim.Adam(net.parameters(), lr=0.001)
+
+        clean_train_x, clean_test_x = [], []
+
+        for sentence in x_train:
+            for i in range(max - len(sentence.strip().split(" "))):
+                sentence += " <FILLER>"
+            sentence = torch.tensor([vocab.numberize(w) for w in sentence.strip().split(" ")],dtype=torch.float32)
+            clean_train_x.append(sentence)
+        for sentence in x_test:
+            for i in range(max - len(sentence.strip().split(" "))):
+                sentence += " <FILLER>"
+            sentence = torch.tensor([vocab.numberize(w) for w in sentence.strip().split(" ")],dtype=torch.float32)
+            clean_test_x.append(sentence)
+
+        # We need to group target scores together for shuffle
+        for i, e in enumerate(clean_train_x):
+            e = e, y_train[i]
+            clean_train_x[i] = e
+        for i, e in enumerate(clean_test_x):
+            e = e, y_test[i]
+            clean_test_x[i] = e
+
+        trainset = clean_train_x
+        testset  = clean_test_x
+
+        for epoch in range(10):
+            for i, data in enumerate(trainset):
+                x, y = data
+
+                net.zero_grad()
+
+                output = net(x)
+                # print(output)
+
+                loss = (output**2 - y**2) # output**2 - y**2 <- this is what it should be, but its bad
+
+                loss.backward()
+                optimizer.step()
+
+        results = []
+        with torch.no_grad():
+            for data in testset:
+                X, y = data
+                results.append(net(x)[0])
+
+        self.model_diagnostics(y_test, results)
+
+        # pytorch has always seg faulted on my computer, if it does for you idk why
+        return net
+
+    def combined_model_1(self):
         '''
         This takes the Forrest Classifier, and makes it learn with the svm values
         '''
@@ -33,8 +139,8 @@ class Models:
         self.train_data['Predicted'] = self.train_prediction
         self.test_data['Predicted'] = self.test_predicition
 
-        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]
-        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]#, 'Edited', 'Author_Karma', 'Author_Age',]]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Predicted']]#, 'Edited', 'Author_Karma', 'Author_Age',]]
         y_train = self.train_data['Score']
         y_test = self.test_data['Score']
 
@@ -43,9 +149,41 @@ class Models:
 
         y_pred = rf.predict(x_test)
 
+        '''
+        plt.plot(y_pred, y_test)
+        plt.show()
+        '''
+
         self.model_diagnostics(y_test, y_pred)
 
         return rf
+
+    def combined_model_2(self):
+        '''
+        This takes the GradientBoostingRegressor, and makes it learn with the svm values
+        '''
+
+        if not self.train_prediction.any() or not self.test_predicition.any():
+            print("Run an svm regrerssor model first!")
+            return
+
+        print("Running Combined Model")
+
+        self.train_data['Predicted'] = self.train_prediction
+        self.test_data['Predicted'] = self.test_predicition
+
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Predicted']] #, 'Edited', 'Author_Karma', 'Author_Age',]]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Predicted']] #, 'Edited', 'Author_Karma', 'Author_Age',]]
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
+
+        gbr = GradientBoostingRegressor(n_estimators=70, max_depth=5)
+        gbr.fit(x_train, y_train)
+
+        y_pred = gbr.predict(x_test)
+        self.model_diagnostics(y_test, y_pred)
+
+        return gbr
 
     def LR_classifier(self):
         '''
@@ -55,10 +193,11 @@ class Models:
         '''
 
 
-        x_train = self.train_data[['Parent_Score', 'Time']]
-        x_test = self.test_data[['Parent_Score', 'Time']]
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Edited']] #, 'Author_Karma', 'Author_Age',]]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Edited']] # , 'Author_Karma', 'Author_Age',]]
         y_train = self.train_data['Score']
         y_test = self.test_data['Score']
+
 
         linear = LinearRegression()
 
@@ -76,8 +215,8 @@ class Models:
         The goal is to improve this with the text
         '''
 
-        x_train = self.train_data[['Parent_Score', 'Time', 'Saved']]
-        x_test = self.test_data[['Parent_Score', 'Time', 'Saved']]
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Edited']] #, 'Author_Karma', 'Author_Age',]]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Edited']] # , 'Author_Karma', 'Author_Age',]]
         y_train = self.train_data['Score']
         y_test = self.test_data['Score']
 
@@ -87,6 +226,20 @@ class Models:
         y_pred = rf.predict(x_test)
         self.model_diagnostics(y_test, y_pred)
         return rf
+
+    def GradiantBoostingRegression(self):
+
+        x_train = self.train_data[['Parent_Score', 'Time', 'Saved', 'Edited']] #, 'Author_Karma', 'Author_Age',]]
+        x_test = self.test_data[['Parent_Score', 'Time', 'Saved', 'Edited']] #, 'Author_Karma', 'Author_Age',]]
+        y_train = self.train_data['Score']
+        y_test = self.test_data['Score']
+
+        gbr = GradientBoostingRegressor(n_estimators=70, max_depth=5)
+        gbr.fit(x_train, y_train)
+
+        y_pred = gbr.predict(x_test)
+        self.model_diagnostics(y_test, y_pred)
+        return gbr
 
     def svm_classifier(self):
         '''
@@ -142,13 +295,34 @@ class Models:
         '''
         this baseline uses mode
         '''
-        pass
+
+        mode = int(stats.mode(self.train_data['Score'])[0])
+
+        pred = []
+        actual = []
+        for guess in self.test_data['Score']:
+            pred.append(mode)
+            actual.append(guess)
+
+        self.model_diagnostics(pred, actual)
+
+        return mode
 
     def baseline_avg(self):
         '''
         this baseline uses average
         '''
-        pass
+        ave = np.average(self.train_data['Score'])
+
+        pred = []
+        actual = []
+        for guess in self.test_data['Score']:
+            pred.append(ave)
+            actual.append(guess)
+
+        self.model_diagnostics(pred, actual)
+
+        return ave
 
     def create_df(self, file):
         sentences = []
@@ -156,6 +330,9 @@ class Models:
         parent_scores = []
         times = []
         saved = []
+        edited = []
+        # author_karma = []
+        # author_age = []
 
         running = ''
         with open(file) as tf:
@@ -169,13 +346,22 @@ class Models:
 
                 values, line = line.strip().split("<COMMENT>")
 
-                parent_score, time, sv = values.strip().split(" ")
+                parent_score, time, sv, edit = values.strip().split(" ")
+
+                if LOG:
+                    if int(score) <= 0:
+                        score = int(score)
+                    else:
+                        score = math.log(int(score))
 
                 sentences.append(line)
-                scores.append(int(score))
+                scores.append(float(score))
                 parent_scores.append(int(parent_score))
                 times.append(float(time))
                 saved.append(int(sv))
+                edited.append(int(edit))
+                # author_karma.append(int(ac))
+                # author_age.append(float(a_age))
 
                 running = ''
 
@@ -184,21 +370,27 @@ class Models:
             'Time'      : times,             \
             'Comment' : sentences,          \
             'Saved'   : saved, \
-            'Score' : scores
+            'Score' : scores, \
+            'Edited' : edited \
+            # 'Author_Karma' : author_karma, \
+            # 'Author_Age' : author_age
         }
         data = pd.DataFrame(data, columns = ['Parent_Score', \
-                                        'Comment', 'Time', 'Saved', 'Score'])
+                                        'Comment', 'Time', 'Saved', 'Edited', \
+                                         'Score'])
 
         return data
 
     def model_diagnostics(self, y_test, y_predicted):
         """
         Returns and prints the R-squared, RMSE and the MAE for a trained model
+        Though simple, I should mention I did not write this
+        https://towardsdatascience.com/predicting-reddit-comment-karma-a8f570b544fc
         """
 
         r2 = r2_score(y_test, y_predicted)
-        mse = mean_squared_error(y_test, y_predicted)
-        mae = mean_absolute_error(y_test, y_predicted)
+        mse = mean_squared_error(y_predicted, y_test)
+        mae = mean_absolute_error(y_predicted, y_test)
 
         print(f"R-Sq: {r2:.4}")
         print(f"RMSE: {np.sqrt(mse)}")
@@ -207,6 +399,36 @@ class Models:
 if __name__ == "__main__":
     _, train, test = sys.argv
 
+
     model = Models(train, test)
+
+    print()
+    print("Mode Baseline")
+    model.baseline_mode()
+    print()
+    print("Average Baseline")
+    model.baseline_avg()
+
+    print()
+    print("SVM regression")
     model.svm_regressor()
-    cbm = model.combined_model()
+
+    print()
+    print("RandomForesetClassifier")
+    model.RandomForesetClassifier()
+
+    print()
+    print("Reinforced RandomForesetClassifier")
+    cbm = model.combined_model_1()
+
+    print()
+    print("GradiantBoostingRegression")
+    gbr = model.GradiantBoostingRegression()
+
+    print()
+    print("Reinforced GradiantBoostingRegression")
+    gbr = model.combined_model_2()
+
+    print()
+    print("Neural Net")
+    ml = model.neural()
