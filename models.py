@@ -57,6 +57,9 @@ class Models:
                 max = len(sentence.strip().split(" "))
             for word in sentence.strip().split(" "):
                 vocab.add(word)
+        for sentence in x_test:
+            if len(sentence.strip().split(" ")) > max:
+                max = len(sentence.strip().split(" "))
 
         class Net(nn.Module):
             def __init__(self):
@@ -71,7 +74,8 @@ class Models:
                 x = F.relu(self.fc2(x))
                 x = F.relu(self.fc3(x))
                 x = self.fc4(x)
-                return x # * 1000
+
+                return x * 10
 
         net = Net()
         optimizer = optim.Adam(net.parameters(), lr=0.001)
@@ -100,16 +104,15 @@ class Models:
         trainset = clean_train_x
         testset  = clean_test_x
 
-        for epoch in range(10):
+        for epoch in range(30):
             for i, data in enumerate(trainset):
                 x, y = data
 
                 net.zero_grad()
 
                 output = net(x)
-                # print(output)
 
-                loss = (output**2 - y**2) # output**2 - y**2 <- this is what it should be, but its bad
+                loss = abs(output**2 - y**2) # output**2 - y**2 <- this is what it should be, but its bad
 
                 loss.backward()
                 optimizer.step()
@@ -118,10 +121,14 @@ class Models:
         with torch.no_grad():
             for data in testset:
                 X, y = data
-                results.append(net(x)[0])
+                results.append(net(X))
 
-        self.model_diagnostics(y_test, results)
+        f_results = []
+        for r in results:
+            f_results.append(float(r))
+        del results
 
+        self.model_diagnostics(y_test, f_results)
         # pytorch has always seg faulted on my computer, if it does for you idk why
         return net
 
@@ -305,6 +312,8 @@ class Models:
             actual.append(guess)
 
         self.model_diagnostics(pred, actual)
+
+        print(mode)
 
         return mode
 
