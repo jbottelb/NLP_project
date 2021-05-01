@@ -4,6 +4,7 @@ This project seeks to be able to guess how well a reddit comment will do based o
 
 ## How to run the code
 To run the models on a train and test set, run the command:
+
 `python3 model.py data/memes.train data/memes.test`
 
 And preformance for each model can be viewed. This command will also store the guesses at score in results.txt
