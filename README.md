@@ -1,10 +1,9 @@
 # NLP_project
 Project for Natural Language Processing
 
+### Consulted Web resources
+https://towardsdatascience.com/predicting-reddit-comment-karma-a8f570b544fc
+https://github.com/importdata/Twitter-Sentiment-Analysis/blob/master/Twitter_Sentiment_Analysis_Support_Vector_Classifier.ipynb
 
-### baseline
 
-The baseline finds the most common score/karma and will always return it. It will
-pretty much always be 1.
-
-This returns scores in the range of 22% to 38% correct
+`python3 model.py data/memes.train data/memes.test`
