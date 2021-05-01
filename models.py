@@ -21,6 +21,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from part1 import Vocab
 
+# Keep track of the guesses so we export them to a file
+GUESSES = {}
+
 # Translate to log values
 LOG = False
 
@@ -64,7 +67,7 @@ class Models:
         class Net(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.fc1 = nn.Linear(max, 64)
+                self.fc1 = nn.Linear(max + 1, 64)
                 self.fc2 = nn.Linear(64, 64)
                 self.fc3 = nn.Linear(64, 64)
                 self.fc4 = nn.Linear(64, 1)
@@ -77,21 +80,24 @@ class Models:
 
                 return x * 10
 
+            def clean_data(self, data):
+                cleaned = []
+                for sentence in data:
+                    l = len(sentence.strip().split())
+                    for i in range(max - len(sentence.strip().split(" "))):
+                        sentence += " <FILLER>"
+                    nums = [ vocab.numberize(w) for w in sentence.strip().split(" ") ]
+                    nums.append(l)
+                    sentence = torch.tensor(nums,dtype=torch.float32)
+                    cleaned.append(sentence)
+                return cleaned
+
         net = Net()
         optimizer = optim.Adam(net.parameters(), lr=0.001)
 
-        clean_train_x, clean_test_x = [], []
-
-        for sentence in x_train:
-            for i in range(max - len(sentence.strip().split(" "))):
-                sentence += " <FILLER>"
-            sentence = torch.tensor([vocab.numberize(w) for w in sentence.strip().split(" ")],dtype=torch.float32)
-            clean_train_x.append(sentence)
-        for sentence in x_test:
-            for i in range(max - len(sentence.strip().split(" "))):
-                sentence += " <FILLER>"
-            sentence = torch.tensor([vocab.numberize(w) for w in sentence.strip().split(" ")],dtype=torch.float32)
-            clean_test_x.append(sentence)
+        # Normalize and clean data
+        clean_train_x = net.clean_data(x_train)
+        clean_test_x = net.clean_data(x_test)
 
         # We need to group target scores together for shuffle
         for i, e in enumerate(clean_train_x):
@@ -112,7 +118,7 @@ class Models:
 
                 output = net(x)
 
-                loss = abs(output**2 - y**2) # output**2 - y**2 <- this is what it should be, but its bad
+                loss = abs(output - y) # or abs(output ** 2 - y ** 2)
 
                 loss.backward()
                 optimizer.step()
@@ -129,7 +135,9 @@ class Models:
         del results
 
         self.model_diagnostics(y_test, f_results)
-        # pytorch has always seg faulted on my computer, if it does for you idk why
+
+        GUESSES['Neural Net'] = f_results
+
         return net
 
     def combined_model_1(self):
@@ -156,12 +164,9 @@ class Models:
 
         y_pred = rf.predict(x_test)
 
-        '''
-        plt.plot(y_pred, y_test)
-        plt.show()
-        '''
-
         self.model_diagnostics(y_test, y_pred)
+
+        GUESSES['Combined Model 1'] = y_pred
 
         return rf
 
@@ -190,6 +195,8 @@ class Models:
         y_pred = gbr.predict(x_test)
         self.model_diagnostics(y_test, y_pred)
 
+        GUESSES['Combined Model 2'] = y_pred
+
         return gbr
 
     def LR_classifier(self):
@@ -211,7 +218,7 @@ class Models:
         LR = linear.fit(x_train, y_train)
         y_pred = LR.predict(x_test)
 
-        print(y_pred)
+        GUESSES['LR Classifier'] = y_pred
 
         self.model_diagnostics(y_test, y_pred)
 
@@ -232,6 +239,9 @@ class Models:
 
         y_pred = rf.predict(x_test)
         self.model_diagnostics(y_test, y_pred)
+
+        GUESSES['Random Forest Classifier'] = y_pred
+
         return rf
 
     def GradiantBoostingRegression(self):
@@ -246,6 +256,9 @@ class Models:
 
         y_pred = gbr.predict(x_test)
         self.model_diagnostics(y_test, y_pred)
+
+        GUESSES['Gradiant Boosting Regressor'] = y_pred
+
         return gbr
 
     def svm_classifier(self):
@@ -298,6 +311,8 @@ class Models:
         self.train_prediction = y_pred_train_svm # this is a cheated matrix but fdp
         self.test_predicition = y_pred_svm
 
+        GUESSES['SVM Regressor'] = y_pred_svm
+
     def baseline_mode(self):
         '''
         this baseline uses mode
@@ -313,7 +328,7 @@ class Models:
 
         self.model_diagnostics(pred, actual)
 
-        print(mode)
+        GUESSES['Mode Baseline'] = pred
 
         return mode
 
@@ -330,6 +345,8 @@ class Models:
             actual.append(guess)
 
         self.model_diagnostics(pred, actual)
+
+        GUESSES['Average Baseline'] = pred
 
         return ave
 
@@ -405,6 +422,17 @@ class Models:
         print(f"RMSE: {np.sqrt(mse)}")
         print(f"MAE: {mae}")
 
+    def export_guesses(self):
+        output = ''
+        for model_name, guesses in GUESSES.items():
+            output += model_name + '\n'
+            for guess in guesses:
+                output += str(guess) + " "
+            output += '\n'
+        f = open("results.txt", "w")
+        f.write(output)
+        f.close()
+
 if __name__ == "__main__":
     _, train, test = sys.argv
 
@@ -441,3 +469,5 @@ if __name__ == "__main__":
     print()
     print("Neural Net")
     ml = model.neural()
+
+    model.export_guesses()
