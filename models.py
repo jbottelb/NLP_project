@@ -13,8 +13,6 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, mean_squared_error, mean_absolute_error, r2_score
 
-from catboost import Pool, cv, CatBoostRegressor,CatBoostClassifier
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -78,7 +76,7 @@ class Models:
                 x = F.relu(self.fc3(x))
                 x = self.fc4(x)
 
-                return x * 10
+                return x
 
             def clean_data(self, data):
                 cleaned = []
@@ -110,7 +108,7 @@ class Models:
         trainset = clean_train_x
         testset  = clean_test_x
 
-        for epoch in range(30):
+        for epoch in range(10):
             for i, data in enumerate(trainset):
                 x, y = data
 
