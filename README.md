@@ -2,11 +2,6 @@
 Project for Natural Language Processing
 This project seeks to be able to guess how well a reddit comment will do based off the text. 
 
-### Consulted Web resources
-https://towardsdatascience.com/predicting-reddit-comment-karma-a8f570b544fc
-https://github.com/importdata/Twitter-Sentiment-Analysis/blob/master/Twitter_Sentiment_Analysis_Support_Vector_Classifier.ipynb
-
-
 ### How to run the code
 To run the models on a train and test set, run the command:
 `python3 model.py data/memes.train data/memes.test`
@@ -28,3 +23,9 @@ Some of the models preformed poorly overall, such as Random Forrest Regressor, b
 These models were reinforced with the svm (support vector machine) and preformed better, but unfortunatley the svm also just learned a constant value to return that would maximise preformace. 
 
 Overall, the results were not too satisfying, but it was an interesting project and I learned quite a bit about fitting models and building a neural network. 
+
+
+##### Consulted Web resources
+https://towardsdatascience.com/predicting-reddit-comment-karma-a8f570b544fc
+https://github.com/importdata/Twitter-Sentiment-Analysis/blob/master/Twitter_Sentiment_Analysis_Support_Vector_Classifier.ipynb
+
