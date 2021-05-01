@@ -1,8 +1,8 @@
 # NLP_project
 Project for Natural Language Processing
-This project seeks to be able to guess how well a reddit comment will do based off the text. 
+This project seeks to be able to guess how well a reddit comment will do based off the text and other comment attributes. 
 
-### How to run the code
+## How to run the code
 To run the models on a train and test set, run the command:
 `python3 model.py data/memes.train data/memes.test`
 
